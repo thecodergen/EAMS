@@ -5,7 +5,7 @@ namespace EAMS.Api.Data
 {
     public class AppDbContext : DbContext
     {
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+        public AppDbContext(DbContextOptions options) : base(options) { }
 
         public DbSet<Department> Departments { get; set; }
         public DbSet<Role> Roles { get; set; }
@@ -14,6 +14,10 @@ namespace EAMS.Api.Data
         public DbSet<Shift> Shifts { get; set; }
         public DbSet<AttendanceStatus> AttendanceStatuses { get; set; }
         public DbSet<Attendance> Attendances { get; set; }
+
+        // Leave Management
+        public DbSet<LeaveRequest> LeaveRequests { get; set; }
+
         public DbSet<Holiday> Holidays { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
 
