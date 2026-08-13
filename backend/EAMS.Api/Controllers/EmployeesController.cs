@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using EAMS.Api.Data;
 using EAMS.Api.Models;
+using EAMS.Api.DTOs;
 
 namespace EAMS.Api.Controllers
 {
@@ -19,38 +20,83 @@ namespace EAMS.Api.Controllers
         // GET: api/employees
         // Get all employees
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Employee>>> GetEmployees()
+        public async Task<ActionResult<IEnumerable<EmployeeDto>>> GetEmployees()
         {
-            return await _context.Employees
+            var employees = await _context.Employees
                 .Include(e => e.Department)
                 .Include(e => e.Role)
                 .Include(e => e.Manager)
+                .Select(e => new EmployeeDto
+                {
+                    Id = e.Id,
+                    FullName = e.FullName,
+                    Email = e.Email,
+
+                    DepartmentId = e.DepartmentId,
+                    Department = e.Department != null
+                        ? e.Department.Name
+                        : string.Empty,
+
+                    RoleId = e.RoleId,
+                    Role = e.Role != null
+                        ? e.Role.Name
+                        : string.Empty,
+
+                    ManagerId = e.ManagerId,
+                    Manager = e.Manager != null
+                        ? e.Manager.FullName
+                        : null
+                })
                 .ToListAsync();
+
+            return Ok(employees);
         }
 
         // GET: api/employees/5
         // Get one employee
         [HttpGet("{id}")]
-        public async Task<ActionResult<Employee>> GetEmployee(int id)
+        public async Task<ActionResult<EmployeeDto>> GetEmployee(int id)
         {
             var employee = await _context.Employees
                 .Include(e => e.Department)
                 .Include(e => e.Role)
                 .Include(e => e.Manager)
-                .FirstOrDefaultAsync(e => e.Id == id);
+                .Where(e => e.Id == id)
+                .Select(e => new EmployeeDto
+                {
+                    Id = e.Id,
+                    FullName = e.FullName,
+                    Email = e.Email,
+
+                    DepartmentId = e.DepartmentId,
+                    Department = e.Department != null
+                        ? e.Department.Name
+                        : string.Empty,
+
+                    RoleId = e.RoleId,
+                    Role = e.Role != null
+                        ? e.Role.Name
+                        : string.Empty,
+
+                    ManagerId = e.ManagerId,
+                    Manager = e.Manager != null
+                        ? e.Manager.FullName
+                        : null
+                })
+                .FirstOrDefaultAsync();
 
             if (employee == null)
             {
                 return NotFound("Employee not found.");
             }
 
-            return employee;
+            return Ok(employee);
         }
 
         // GET: api/employees/manager/1/team
         // Get all employees working under a manager
         [HttpGet("manager/{managerId}/team")]
-        public async Task<ActionResult<IEnumerable<Employee>>> GetManagerTeam(int managerId)
+        public async Task<ActionResult<IEnumerable<EmployeeDto>>> GetManagerTeam(int managerId)
         {
             var managerExists = await _context.Employees
                 .AnyAsync(e => e.Id == managerId);
@@ -65,9 +111,30 @@ namespace EAMS.Api.Controllers
                 .Include(e => e.Department)
                 .Include(e => e.Role)
                 .Include(e => e.Manager)
+                .Select(e => new EmployeeDto
+                {
+                    Id = e.Id,
+                    FullName = e.FullName,
+                    Email = e.Email,
+
+                    DepartmentId = e.DepartmentId,
+                    Department = e.Department != null
+                        ? e.Department.Name
+                        : string.Empty,
+
+                    RoleId = e.RoleId,
+                    Role = e.Role != null
+                        ? e.Role.Name
+                        : string.Empty,
+
+                    ManagerId = e.ManagerId,
+                    Manager = e.Manager != null
+                        ? e.Manager.FullName
+                        : null
+                })
                 .ToListAsync();
 
-            return team;
+            return Ok(team);
         }
 
         // GET: api/employees/manager/1
@@ -78,7 +145,29 @@ namespace EAMS.Api.Controllers
             var manager = await _context.Employees
                 .Include(e => e.Department)
                 .Include(e => e.Role)
-                .FirstOrDefaultAsync(e => e.Id == managerId);
+                .Where(e => e.Id == managerId)
+                .Select(e => new EmployeeDto
+                {
+                    Id = e.Id,
+                    FullName = e.FullName,
+                    Email = e.Email,
+
+                    DepartmentId = e.DepartmentId,
+                    Department = e.Department != null
+                        ? e.Department.Name
+                        : string.Empty,
+
+                    RoleId = e.RoleId,
+                    Role = e.Role != null
+                        ? e.Role.Name
+                        : string.Empty,
+
+                    ManagerId = e.ManagerId,
+                    Manager = e.Manager != null
+                        ? e.Manager.FullName
+                        : null
+                })
+                .FirstOrDefaultAsync();
 
             if (manager == null)
             {
@@ -89,6 +178,27 @@ namespace EAMS.Api.Controllers
                 .Where(e => e.ManagerId == managerId)
                 .Include(e => e.Department)
                 .Include(e => e.Role)
+                .Select(e => new EmployeeDto
+                {
+                    Id = e.Id,
+                    FullName = e.FullName,
+                    Email = e.Email,
+
+                    DepartmentId = e.DepartmentId,
+                    Department = e.Department != null
+                        ? e.Department.Name
+                        : string.Empty,
+
+                    RoleId = e.RoleId,
+                    Role = e.Role != null
+                        ? e.Role.Name
+                        : string.Empty,
+
+                    ManagerId = e.ManagerId,
+                    Manager = e.Manager != null
+                        ? e.Manager.FullName
+                        : null
+                })
                 .ToListAsync();
 
             return Ok(new
@@ -136,7 +246,8 @@ namespace EAMS.Api.Controllers
                 // Prevent employee from being their own manager
                 if (employee.ManagerId.Value == employee.Id)
                 {
-                    return BadRequest("An employee cannot be their own manager.");
+                    return BadRequest(
+                        "An employee cannot be their own manager.");
                 }
             }
 
@@ -198,8 +309,7 @@ namespace EAMS.Api.Controllers
                 if (employee.ManagerId.Value == employee.Id)
                 {
                     return BadRequest(
-                        "An employee cannot be their own manager."
-                    );
+                        "An employee cannot be their own manager.");
                 }
 
                 var managerExists = await _context.Employees
@@ -240,8 +350,7 @@ namespace EAMS.Api.Controllers
             if (employeeId == managerId)
             {
                 return BadRequest(
-                    "An employee cannot be their own manager."
-                );
+                    "An employee cannot be their own manager.");
             }
 
             var employee = await _context.Employees

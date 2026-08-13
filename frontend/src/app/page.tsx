@@ -42,11 +42,15 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Currently logged-in employee
   const employeeId = 1;
 
   useEffect(() => {
     const loadDashboard = async () => {
       try {
+        setLoading(true);
+        setError("");
+
         const [employeeResponse, attendanceResponse] =
           await Promise.all([
             fetch("http://localhost:5000/api/employees"),
@@ -65,6 +69,7 @@ export default function Dashboard() {
         );
 
         setEmployee(currentEmployee ?? null);
+
         setAttendance(
           attendanceData.filter(
             (item: Attendance) =>
@@ -81,6 +86,10 @@ export default function Dashboard() {
 
     loadDashboard();
   }, []);
+
+  // ============================
+  // ATTENDANCE CALCULATIONS
+  // ============================
 
   const presentDays = attendance.filter(
     (item) => item.status?.name === "Present"
@@ -106,6 +115,10 @@ export default function Dashboard() {
     (item) => item.status?.name === "Vacation"
   ).length;
 
+  // ============================
+  // LOADING
+  // ============================
+
   if (loading) {
     return (
       <main
@@ -114,10 +127,14 @@ export default function Dashboard() {
           fontFamily: "Arial, sans-serif",
         }}
       >
-        Loading EAMS dashboard...
+        <h2>Loading EAMS dashboard...</h2>
       </main>
     );
   }
+
+  // ============================
+  // ERROR
+  // ============================
 
   if (error) {
     return (
@@ -127,10 +144,33 @@ export default function Dashboard() {
           fontFamily: "Arial, sans-serif",
         }}
       >
-        <p style={{ color: "red" }}>{error}</p>
+        <h2>EAMS Dashboard</h2>
+
+        <p
+          style={{
+            color: "red",
+            background: "#fee2e2",
+            padding: "15px",
+            borderRadius: "8px",
+          }}
+        >
+          {error}
+        </p>
+
+        <p>
+          Make sure the ASP.NET Core backend is running on:
+        </p>
+
+        <strong>
+          http://localhost:5000
+        </strong>
       </main>
     );
   }
+
+  // ============================
+  // MAIN DASHBOARD
+  // ============================
 
   return (
     <main
@@ -191,18 +231,29 @@ export default function Dashboard() {
             👥 Team Overview
           </Link>
 
-          <div style={navStyle(false)}>
+          <Link
+            href="/leave-requests"
+            style={navStyle(false)}
+          >
             📋 Leave Requests
-          </div>
+          </Link>
 
-          <div style={navStyle(false)}>
+          <Link
+            href="/reports"
+            style={navStyle(false)}
+          >
             📊 Reports & Analytics
-          </div>
+          </Link>
 
-          <div style={navStyle(false)}>
+          <Link
+            href="/settings"
+            style={navStyle(false)}
+          >
             ⚙️ Settings
-          </div>
+          </Link>
         </nav>
+
+        {/* Employee information */}
 
         <div
           style={{
@@ -231,15 +282,18 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* ================= MAIN ================= */}
+      {/* ================= MAIN CONTENT ================= */}
 
       <section
         style={{
           flex: 1,
           padding: "35px",
           maxWidth: "1400px",
+          boxSizing: "border-box",
         }}
       >
+        {/* Header */}
+
         <div
           style={{
             marginBottom: "30px",
@@ -321,7 +375,7 @@ export default function Dashboard() {
             gap: "22px",
           }}
         >
-          {/* Attendance Overview */}
+          {/* ================= ATTENDANCE ================= */}
 
           <div
             style={{
@@ -411,6 +465,10 @@ export default function Dashboard() {
                       <th style={tableCell}>
                         Shift
                       </th>
+
+                      <th style={tableCell}>
+                        Remarks
+                      </th>
                     </tr>
                   </thead>
 
@@ -418,9 +476,7 @@ export default function Dashboard() {
                     {[...attendance]
                       .sort(
                         (a, b) =>
-                          b.date.localeCompare(
-                            a.date
-                          )
+                          b.date.localeCompare(a.date)
                       )
                       .slice(0, 8)
                       .map((record) => (
@@ -449,6 +505,10 @@ export default function Dashboard() {
                             {record.shift?.name ??
                               "—"}
                           </td>
+
+                          <td style={tableCell}>
+                            {record.remarks ?? "—"}
+                          </td>
                         </tr>
                       ))}
                   </tbody>
@@ -457,7 +517,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Employee Card */}
+          {/* ================= EMPLOYEE PROFILE ================= */}
 
           <div
             style={{
@@ -476,6 +536,29 @@ export default function Dashboard() {
             >
               Employee Profile
             </h2>
+
+            <div
+              style={{
+                width: "65px",
+                height: "65px",
+                borderRadius: "50%",
+                background: "#dbeafe",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "24px",
+                fontWeight: "bold",
+                color: "#2563eb",
+                marginBottom: "15px",
+              }}
+            >
+              {employee?.fullName
+                ?.split(" ")
+                .map((name) => name[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()}
+            </div>
 
             <div
               style={{
@@ -503,8 +586,7 @@ export default function Dashboard() {
               }}
             >
               Department:{" "}
-              {employee?.department?.name ??
-                "—"}
+              {employee?.department?.name ?? "—"}
             </div>
 
             <div
@@ -514,8 +596,7 @@ export default function Dashboard() {
               }}
             >
               Role:{" "}
-              {employee?.role?.name ??
-                "—"}
+              {employee?.role?.name ?? "—"}
             </div>
 
             <Link
@@ -590,6 +671,7 @@ function SummaryCard({
         }}
       >
         {value}
+
         <span
           style={{
             fontSize: "13px",
@@ -605,6 +687,8 @@ function SummaryCard({
   );
 }
 
+/* ================= SIDEBAR STYLE ================= */
+
 function navStyle(active: boolean) {
   return {
     display: "block",
@@ -617,6 +701,8 @@ function navStyle(active: boolean) {
     fontWeight: active ? "bold" : "normal",
   };
 }
+
+/* ================= TABLE STYLE ================= */
 
 const tableCell = {
   padding: "12px 10px",

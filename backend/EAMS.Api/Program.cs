@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using EAMS.Api.Data;
 using EAMS.Api.Models;
+using EAMS.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,8 +23,14 @@ builder.Services.AddControllers()
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("DefaultConnection")
-    )
-);
+    ));
+
+// ============================================
+// SERVICES
+// ============================================
+
+// Audit Service
+builder.Services.AddScoped<IAuditService, AuditService>();
 
 // ============================================
 // CORS
@@ -66,8 +73,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowFrontend");
 
-app.UseHttpsRedirection();
-
+// Keep HTTP API working on localhost:5000.
+// HTTPS redirection can cause issues when no HTTPS
+// port is configured in development.
 app.UseAuthorization();
 
 app.MapControllers();

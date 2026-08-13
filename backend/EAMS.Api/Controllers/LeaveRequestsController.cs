@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using EAMS.Api.Data;
 using EAMS.Api.Models;
+using EAMS.Api.DTOs;
 
 namespace EAMS.Api.Controllers
 {
@@ -16,57 +17,107 @@ namespace EAMS.Api.Controllers
             _context = context;
         }
 
-        // ============================================
         // GET: api/LeaveRequests
-        // ============================================
-
+        // Get all leave requests
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<LeaveRequest>>> GetLeaveRequests()
+        public async Task<ActionResult<IEnumerable<LeaveRequestDto>>> GetLeaveRequests()
         {
-            return await _context.LeaveRequests
+            var requests = await _context.LeaveRequests
                 .Include(l => l.Employee)
+                .Select(l => new LeaveRequestDto
+                {
+                    Id = l.Id,
+
+                    EmployeeId = l.EmployeeId,
+                    EmployeeName = l.Employee != null
+                        ? l.Employee.FullName
+                        : string.Empty,
+
+                    LeaveType = l.LeaveType,
+                    StartDate = l.StartDate,
+                    EndDate = l.EndDate,
+                    Reason = l.Reason,
+                    Status = l.Status
+                })
                 .OrderByDescending(l => l.StartDate)
                 .ToListAsync();
+
+            return Ok(requests);
         }
 
-        // ============================================
         // GET: api/LeaveRequests/employee/1
-        // ============================================
-
+        // Get leave requests for one employee
         [HttpGet("employee/{employeeId}")]
-        public async Task<ActionResult<IEnumerable<LeaveRequest>>> GetEmployeeLeaveRequests(
+        public async Task<ActionResult<IEnumerable<LeaveRequestDto>>> GetEmployeeLeaveRequests(
             int employeeId)
         {
-            return await _context.LeaveRequests
-                .Include(l => l.Employee)
+            var employeeExists = await _context.Employees
+                .AnyAsync(e => e.Id == employeeId);
+
+            if (!employeeExists)
+            {
+                return NotFound("Employee not found.");
+            }
+
+            var requests = await _context.LeaveRequests
                 .Where(l => l.EmployeeId == employeeId)
+                .Include(l => l.Employee)
+                .Select(l => new LeaveRequestDto
+                {
+                    Id = l.Id,
+
+                    EmployeeId = l.EmployeeId,
+                    EmployeeName = l.Employee != null
+                        ? l.Employee.FullName
+                        : string.Empty,
+
+                    LeaveType = l.LeaveType,
+                    StartDate = l.StartDate,
+                    EndDate = l.EndDate,
+                    Reason = l.Reason,
+                    Status = l.Status
+                })
                 .OrderByDescending(l => l.StartDate)
                 .ToListAsync();
+
+            return Ok(requests);
         }
 
-        // ============================================
         // GET: api/LeaveRequests/1
-        // ============================================
-
+        // Get one leave request
         [HttpGet("{id}")]
-        public async Task<ActionResult<LeaveRequest>> GetLeaveRequest(int id)
+        public async Task<ActionResult<LeaveRequestDto>> GetLeaveRequest(int id)
         {
             var request = await _context.LeaveRequests
                 .Include(l => l.Employee)
-                .FirstOrDefaultAsync(l => l.Id == id);
+                .Where(l => l.Id == id)
+                .Select(l => new LeaveRequestDto
+                {
+                    Id = l.Id,
+
+                    EmployeeId = l.EmployeeId,
+                    EmployeeName = l.Employee != null
+                        ? l.Employee.FullName
+                        : string.Empty,
+
+                    LeaveType = l.LeaveType,
+                    StartDate = l.StartDate,
+                    EndDate = l.EndDate,
+                    Reason = l.Reason,
+                    Status = l.Status
+                })
+                .FirstOrDefaultAsync();
 
             if (request == null)
             {
-                return NotFound();
+                return NotFound("Leave request not found.");
             }
 
-            return request;
+            return Ok(request);
         }
 
-        // ============================================
         // POST: api/LeaveRequests
-        // ============================================
-
+        // Create leave request
         [HttpPost]
         public async Task<ActionResult<LeaveRequest>> CreateLeaveRequest(
             LeaveRequest request)
@@ -104,10 +155,8 @@ namespace EAMS.Api.Controllers
                 request);
         }
 
-        // ============================================
         // PUT: api/LeaveRequests/1
-        // ============================================
-
+        // Update leave request
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateLeaveRequest(
             int id,
@@ -115,7 +164,8 @@ namespace EAMS.Api.Controllers
         {
             if (id != request.Id)
             {
-                return BadRequest();
+                return BadRequest(
+                    "Leave request ID does not match.");
             }
 
             var existing = await _context.LeaveRequests
@@ -123,11 +173,11 @@ namespace EAMS.Api.Controllers
 
             if (existing == null)
             {
-                return NotFound();
+                return NotFound(
+                    "Leave request not found.");
             }
 
-            // Do not allow editing an already
-            // approved or rejected request.
+            // Only pending requests can be edited
             if (existing.Status != "Pending")
             {
                 return BadRequest(
@@ -150,11 +200,8 @@ namespace EAMS.Api.Controllers
             return NoContent();
         }
 
-        // ============================================
-        // APPROVE LEAVE REQUEST
         // PUT: api/LeaveRequests/1/approve
-        // ============================================
-
+        // Approve leave request
         [HttpPut("{id}/approve")]
         public async Task<IActionResult> ApproveLeaveRequest(int id)
         {
@@ -185,11 +232,8 @@ namespace EAMS.Api.Controllers
             });
         }
 
-        // ============================================
-        // REJECT LEAVE REQUEST
         // PUT: api/LeaveRequests/1/reject
-        // ============================================
-
+        // Reject leave request
         [HttpPut("{id}/reject")]
         public async Task<IActionResult> RejectLeaveRequest(int id)
         {
@@ -220,10 +264,8 @@ namespace EAMS.Api.Controllers
             });
         }
 
-        // ============================================
         // DELETE: api/LeaveRequests/1
-        // ============================================
-
+        // Delete leave request
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteLeaveRequest(int id)
         {
@@ -232,7 +274,8 @@ namespace EAMS.Api.Controllers
 
             if (request == null)
             {
-                return NotFound();
+                return NotFound(
+                    "Leave request not found.");
             }
 
             _context.LeaveRequests.Remove(request);
