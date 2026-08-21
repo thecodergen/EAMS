@@ -239,26 +239,37 @@ namespace EAMS.Api.Controllers
             // Prevent duplicate attendance
             // ----------------------------------------
 
-            var alreadyExists = await _context.Attendances
-                .AnyAsync(a =>
+            var existingAttendance = await _context.Attendances
+                .FirstOrDefaultAsync(a =>
                     a.EmployeeId == attendance.EmployeeId &&
                     a.Date == attendance.Date);
 
-            if (alreadyExists)
+            if (existingAttendance != null)
             {
-                return Conflict(
-                    "Attendance for this employee on this date has already been submitted.");
+                existingAttendance.StatusId = attendance.StatusId;
+                existingAttendance.LocationId = attendance.LocationId;
+                existingAttendance.ShiftId = attendance.ShiftId;
+                existingAttendance.Remarks = attendance.Remarks;
+
+                _context.Attendances.Update(existingAttendance);
+                await _context.SaveChangesAsync();
+
+                await _auditService.LogAsync(
+                    attendance.EmployeeId,
+                    "Attendance updated");
+
+                return Ok(existingAttendance);
             }
 
             // ----------------------------------------
-            // Prevent future attendance
+            // Prevent future attendance (REMOVED FOR PLANNING)
             // ----------------------------------------
 
-            if (attendance.Date > DateOnly.FromDateTime(DateTime.Today))
-            {
-                return BadRequest(
-                    "Cannot submit attendance for a future date.");
-            }
+            // if (attendance.Date > DateOnly.FromDateTime(DateTime.Today))
+            // {
+            //     return BadRequest(
+            //         "Cannot submit attendance for a future date.");
+            // }
 
             // ----------------------------------------
             // Save attendance
@@ -434,6 +445,80 @@ namespace EAMS.Api.Controllers
                 "Attendance deleted");
 
             return NoContent();
+        }
+
+        // ============================================
+        // GET: api/attendance/team/5
+        // Get attendance records for direct reports of a manager
+        // ============================================
+        [HttpGet("team/{managerId}")]
+        public async Task<ActionResult<IEnumerable<AttendanceDto>>> GetTeamAttendance(int managerId)
+        {
+            var teamEmployeeIds = await _context.Employees
+                .Where(e => e.ManagerId == managerId)
+                .Select(e => e.Id)
+                .ToListAsync();
+
+            var records = await _context.Attendances
+                .Where(a => teamEmployeeIds.Contains(a.EmployeeId))
+                .Include(a => a.Employee)
+                .Include(a => a.Status)
+                .Include(a => a.Location)
+                .Include(a => a.Shift)
+                .Select(a => new AttendanceDto
+                {
+                    Id = a.Id,
+                    Date = a.Date,
+                    Remarks = a.Remarks,
+                    EmployeeId = a.EmployeeId,
+                    EmployeeName = a.Employee != null ? a.Employee.FullName : string.Empty,
+                    StatusId = a.StatusId,
+                    Status = a.Status != null ? a.Status.Name : string.Empty,
+                    LocationId = a.LocationId,
+                    Location = a.Location != null ? a.Location.Name : null,
+                    ShiftId = a.ShiftId,
+                    Shift = a.Shift != null ? a.Shift.Name : null
+                })
+                .OrderByDescending(a => a.Date)
+                .ToListAsync();
+
+            return Ok(records);
+        }
+
+        // ============================================
+        // GET: api/attendance/summary
+        // Get high level metrics for dashboard
+        // ============================================
+        [HttpGet("summary")]
+        public async Task<ActionResult<object>> GetAttendanceSummary([FromQuery] DateOnly? date)
+        {
+            var targetDate = date ?? DateOnly.FromDateTime(DateTime.Today);
+            var totalEmployees = await _context.Employees.CountAsync();
+
+            var todayRecords = await _context.Attendances
+                .Where(a => a.Date == targetDate)
+                .Include(a => a.Status)
+                .Include(a => a.Location)
+                .ToListAsync();
+
+            var presentCount = todayRecords.Count(a => a.Status?.Name == "Present");
+            var absentCount = todayRecords.Count(a => a.Status?.Name == "Absent");
+            var leaveCount = todayRecords.Count(a => a.Status?.Name != null && (a.Status.Name.Contains("Leave") || a.Status.Name.Contains("Vacation")));
+            var wfhCount = todayRecords.Count(a => a.Location?.Name == "Home");
+            var officeCount = todayRecords.Count(a => a.Location?.Name == "Office");
+            var missingCount = totalEmployees - todayRecords.Count;
+
+            return Ok(new
+            {
+                Date = targetDate,
+                TotalEmployees = totalEmployees,
+                Present = presentCount,
+                Absent = absentCount,
+                OnLeave = leaveCount,
+                WFH = wfhCount,
+                Office = officeCount,
+                Missing = Math.Max(0, missingCount)
+            });
         }
     }
 }

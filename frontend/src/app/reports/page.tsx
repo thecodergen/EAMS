@@ -1,24 +1,59 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+
+const API = "http://localhost:5000/api";
+
+type AttendanceSummary = {
+  totalRecords: number;
+  present: number;
+  absent: number;
+  attendancePercentage: number;
+};
+
+type WfhWfo = {
+  workFromOffice: number;
+  workFromHome: number;
+  total: number;
+};
+
+type LeaveSummary = {
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+};
+
+type DepartmentReport = {
+  department: string;
+  employeeCount: number;
+};
+
+type MonthlyReport = {
+  year: number;
+  month: number;
+  totalRecords: number;
+  present: number;
+  absent: number;
+  workFromOffice: number;
+  workFromHome: number;
+  attendancePercentage: number;
+};
 
 type Attendance = {
   id: number;
   date: string;
   remarks?: string | null;
   employeeId: number;
-  statusId: number;
   status?: {
     id: number;
     name: string;
   } | null;
-  locationId?: number | null;
   location?: {
     id: number;
     name: string;
   } | null;
-  shiftId?: number | null;
   shift?: {
     id: number;
     name: string;
@@ -33,128 +68,114 @@ type Attendance = {
 };
 
 export default function ReportsPage() {
+  const [attendanceSummary, setAttendanceSummary] =
+    useState<AttendanceSummary | null>(null);
+
+  const [wfhWfo, setWfhWfo] = useState<WfhWfo | null>(null);
+
+  const [leaveSummary, setLeaveSummary] =
+    useState<LeaveSummary | null>(null);
+
+  const [departmentReport, setDepartmentReport] =
+    useState<DepartmentReport[]>([]);
+
+  const [monthlyReport, setMonthlyReport] =
+    useState<MonthlyReport | null>(null);
+
   const [records, setRecords] = useState<Attendance[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    const loadAttendance = async () => {
-      try {
-        const response = await fetch(
-          "http://localhost:5000/api/Attendance"
-        );
+  const currentDate = new Date();
 
-        if (!response.ok) {
-          throw new Error("Failed to load attendance");
-        }
+  const [selectedYear, setSelectedYear] = useState(
+    currentDate.getFullYear()
+  );
 
-        const data = await response.json();
-        setRecords(data);
-      } catch (error) {
-        console.error(error);
-        setError(
-          "Unable to load attendance reports. Make sure the backend is running."
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
+  const [selectedMonth, setSelectedMonth] = useState(
+    currentDate.getMonth() + 1
+  );
 
-    loadAttendance();
-  }, []);
+  async function loadReports() {
+    try {
+      setLoading(true);
+      setError("");
 
-  const statistics = useMemo(() => {
-    const present = records.filter(
-      (r) => r.status?.name === "Present"
-    ).length;
-
-    const absent = records.filter(
-      (r) => r.status?.name === "Absent"
-    ).length;
-
-    const sickLeave = records.filter(
-      (r) => r.status?.name === "Sick Leave"
-    ).length;
-
-    const vacation = records.filter(
-      (r) => r.status?.name === "Vacation"
-    ).length;
-
-    const office = records.filter(
-      (r) => r.location?.name === "Office"
-    ).length;
-
-    const home = records.filter(
-      (r) => r.location?.name === "Home"
-    ).length;
-
-    return {
-      total: records.length,
-      present,
-      absent,
-      sickLeave,
-      vacation,
-      office,
-      home,
-    };
-  }, [records]);
-
-  const monthlyData = useMemo(() => {
-    const months: Record<
-      string,
-      {
-        present: number;
-        absent: number;
-        leave: number;
-        total: number;
-      }
-    > = {};
-
-    records.forEach((record) => {
-      const month = record.date.substring(0, 7);
-
-      if (!months[month]) {
-        months[month] = {
-          present: 0,
-          absent: 0,
-          leave: 0,
-          total: 0,
-        };
-      }
-
-      months[month].total++;
-
-      if (record.status?.name === "Present") {
-        months[month].present++;
-      }
-
-      if (record.status?.name === "Absent") {
-        months[month].absent++;
-      }
+      const [
+        attendanceResponse,
+        wfhWfoResponse,
+        leaveResponse,
+        departmentResponse,
+        monthlyResponse,
+        recordsResponse,
+      ] = await Promise.all([
+        fetch(`${API}/reports/attendance-summary`),
+        fetch(`${API}/reports/wfh-wfo`),
+        fetch(`${API}/reports/leave-summary`),
+        fetch(`${API}/reports/department`),
+        fetch(
+          `${API}/reports/monthly?year=${selectedYear}&month=${selectedMonth}`
+        ),
+        fetch(`${API}/Attendance`),
+      ]);
 
       if (
-        record.status?.name === "Sick Leave" ||
-        record.status?.name === "Vacation"
+        !attendanceResponse.ok ||
+        !wfhWfoResponse.ok ||
+        !leaveResponse.ok ||
+        !departmentResponse.ok ||
+        !monthlyResponse.ok ||
+        !recordsResponse.ok
       ) {
-        months[month].leave++;
+        throw new Error("Failed to load reports");
       }
-    });
 
-    return Object.entries(months)
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([month, value]) => ({
-        month,
-        ...value,
-      }));
-  }, [records]);
+      const [
+        attendanceData,
+        wfhWfoData,
+        leaveData,
+        departmentData,
+        monthlyData,
+        recordsData,
+      ] = await Promise.all([
+        attendanceResponse.json(),
+        wfhWfoResponse.json(),
+        leaveResponse.json(),
+        departmentResponse.json(),
+        monthlyResponse.json(),
+        recordsResponse.json(),
+      ]);
 
-  const formatMonth = (month: string) => {
-    const date = new Date(`${month}-01`);
+      setAttendanceSummary(attendanceData);
+      setWfhWfo(wfhWfoData);
+      setLeaveSummary(leaveData);
+      setDepartmentReport(departmentData);
+      setMonthlyReport(monthlyData);
+      setRecords(recordsData);
+    } catch (err) {
+      console.error(err);
 
-    return date.toLocaleDateString("en-IN", {
-      month: "long",
-      year: "numeric",
-    });
+      setError(
+        "Unable to load reports. Make sure the ASP.NET Core backend is running on http://localhost:5000."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadReports();
+  }, [selectedYear, selectedMonth]);
+
+  const formatMonth = (month: number, year: number) => {
+    return new Date(year, month - 1, 1).toLocaleDateString(
+      "en-IN",
+      {
+        month: "long",
+        year: "numeric",
+      }
+    );
   };
 
   const exportCSV = () => {
@@ -180,14 +201,12 @@ export default function ReportsPage() {
       record.remarks ?? "",
     ]);
 
-    const csv = [
-      header,
-      ...rows,
-    ]
+    const csv = [header, ...rows]
       .map((row) =>
         row
-          .map((value) =>
-            `"${String(value).replaceAll('"', '""')}"`
+          .map(
+            (value) =>
+              `"${String(value).replaceAll('"', '""')}"`
           )
           .join(",")
       )
@@ -200,11 +219,14 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement("a");
+
     link.href = url;
     link.download = "EAMS-Attendance-Report.csv";
 
     document.body.appendChild(link);
+
     link.click();
+
     document.body.removeChild(link);
 
     URL.revokeObjectURL(url);
@@ -280,9 +302,12 @@ export default function ReportsPage() {
             📊 Reports & Analytics
           </Link>
 
-          <div style={navStyle(false)}>
+          <Link
+            href="/settings"
+            style={navStyle(false)}
+          >
             ⚙️ Settings
-          </div>
+          </Link>
         </nav>
       </aside>
 
@@ -295,12 +320,16 @@ export default function ReportsPage() {
           overflowX: "auto",
         }}
       >
+        {/* HEADER */}
+
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             marginBottom: "30px",
+            gap: "20px",
+            flexWrap: "wrap",
           }}
         >
           <div>
@@ -320,7 +349,7 @@ export default function ReportsPage() {
                 color: "#6b7280",
               }}
             >
-              Analyze employee attendance and work patterns.
+              Real-time attendance, leave and workforce analytics.
             </p>
           </div>
 
@@ -379,72 +408,81 @@ export default function ReportsPage() {
           </div>
         ) : (
           <>
-            {/* STATISTICS */}
+            {/* TOP STATISTICS */}
 
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "repeat(4, minmax(180px, 1fr))",
+                  "repeat(auto-fit, minmax(200px, 1fr))",
                 gap: "18px",
                 marginBottom: "25px",
               }}
             >
               <StatCard
-                title="Total Attendance"
-                value={statistics.total}
+                title="Attendance"
+                value={`${attendanceSummary?.attendancePercentage ?? 0}%`}
                 icon="📊"
               />
 
               <StatCard
                 title="Present"
-                value={statistics.present}
+                value={attendanceSummary?.present ?? 0}
                 icon="✅"
               />
 
               <StatCard
                 title="Absent"
-                value={statistics.absent}
+                value={attendanceSummary?.absent ?? 0}
                 icon="❌"
               />
 
               <StatCard
-                title="Leave"
-                value={
-                  statistics.sickLeave +
-                  statistics.vacation
-                }
-                icon="🏖️"
+                title="Total Records"
+                value={attendanceSummary?.totalRecords ?? 0}
+                icon="📋"
               />
             </div>
 
-            {/* WORK LOCATION */}
+            {/* WFH / WFO */}
 
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "repeat(2, minmax(250px, 1fr))",
+                  "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: "20px",
                 marginBottom: "25px",
               }}
             >
               <StatCard
                 title="Work From Office"
-                value={statistics.office}
+                value={wfhWfo?.workFromOffice ?? 0}
                 icon="🏢"
               />
 
               <StatCard
                 title="Work From Home"
-                value={statistics.home}
+                value={wfhWfo?.workFromHome ?? 0}
                 icon="🏠"
+              />
+
+              <StatCard
+                title="Total Leave Requests"
+                value={leaveSummary?.total ?? 0}
+                icon="🏖️"
+              />
+
+              <StatCard
+                title="Approved Leaves"
+                value={leaveSummary?.approved ?? 0}
+                icon="✅"
               />
             </div>
 
-            {/* MONTHLY SUMMARY */}
+            {/* LEAVE SUMMARY */}
 
-            <div
+            <section
               style={{
                 background: "#ffffff",
                 border: "1px solid #e5e7eb",
@@ -453,18 +491,53 @@ export default function ReportsPage() {
                 marginBottom: "25px",
               }}
             >
-              <h2
-                style={{
-                  marginTop: 0,
-                  fontSize: "20px",
-                }}
-              >
-                Monthly Attendance Summary
+              <h2 style={{ marginTop: 0 }}>
+                Leave Statistics
               </h2>
 
-              {monthlyData.length === 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: "15px",
+                }}
+              >
+                <MiniCard
+                  title="Pending"
+                  value={leaveSummary?.pending ?? 0}
+                />
+
+                <MiniCard
+                  title="Approved"
+                  value={leaveSummary?.approved ?? 0}
+                />
+
+                <MiniCard
+                  title="Rejected"
+                  value={leaveSummary?.rejected ?? 0}
+                />
+              </div>
+            </section>
+
+            {/* DEPARTMENT REPORT */}
+
+            <section
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+                borderRadius: "14px",
+                padding: "25px",
+                marginBottom: "25px",
+              }}
+            >
+              <h2 style={{ marginTop: 0 }}>
+                Department-wise Report
+              </h2>
+
+              {departmentReport.length === 0 ? (
                 <p style={{ color: "#6b7280" }}>
-                  No attendance data available.
+                  No department data available.
                 </p>
               ) : (
                 <div style={{ overflowX: "auto" }}>
@@ -475,127 +548,181 @@ export default function ReportsPage() {
                     }}
                   >
                     <thead>
-                      <tr
-                        style={{
-                          borderBottom:
-                            "2px solid #e5e7eb",
-                          textAlign: "left",
-                        }}
-                      >
+                      <tr>
                         <th style={tableCell}>
-                          Month
+                          Department
                         </th>
 
                         <th style={tableCell}>
-                          Total
-                        </th>
-
-                        <th style={tableCell}>
-                          Present
-                        </th>
-
-                        <th style={tableCell}>
-                          Absent
-                        </th>
-
-                        <th style={tableCell}>
-                          Leave
-                        </th>
-
-                        <th style={tableCell}>
-                          Attendance %
+                          Employees
                         </th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {monthlyData.map((item) => {
-                        const percentage =
-                          item.total === 0
-                            ? 0
-                            : Math.round(
-                                (item.present /
-                                  item.total) *
-                                  100
-                              );
+                      {departmentReport.map((item) => (
+                        <tr key={item.department}>
+                          <td style={tableCell}>
+                            {item.department}
+                          </td>
 
-                        return (
-                          <tr
-                            key={item.month}
-                            style={{
-                              borderBottom:
-                                "1px solid #eeeeee",
-                            }}
-                          >
-                            <td style={tableCell}>
-                              {formatMonth(item.month)}
-                            </td>
-
-                            <td style={tableCell}>
-                              {item.total}
-                            </td>
-
-                            <td
-                              style={{
-                                ...tableCell,
-                                color: "#15803d",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              {item.present}
-                            </td>
-
-                            <td style={tableCell}>
-                              {item.absent}
-                            </td>
-
-                            <td style={tableCell}>
-                              {item.leave}
-                            </td>
-
-                            <td style={tableCell}>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "10px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    width: "100px",
-                                    height: "8px",
-                                    background:
-                                      "#e5e7eb",
-                                    borderRadius: "10px",
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      width: `${percentage}%`,
-                                      height: "100%",
-                                      background:
-                                        "#2563eb",
-                                    }}
-                                  />
-                                </div>
-
-                                {percentage}%
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                          <td style={tableCell}>
+                            <strong>
+                              {item.employeeCount}
+                            </strong>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
               )}
-            </div>
+            </section>
 
-            {/* ATTENDANCE RECORDS */}
+            {/* MONTHLY REPORT */}
 
-            <div
+            <section
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+                borderRadius: "14px",
+                padding: "25px",
+                marginBottom: "25px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "15px",
+                  flexWrap: "wrap",
+                  marginBottom: "20px",
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0 }}>
+                    Monthly Attendance Report
+                  </h2>
+
+                  <p
+                    style={{
+                      color: "#6b7280",
+                      marginBottom: 0,
+                    }}
+                  >
+                    {monthlyReport
+                      ? formatMonth(
+                          monthlyReport.month,
+                          monthlyReport.year
+                        )
+                      : "Monthly report"}
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                  }}
+                >
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) =>
+                      setSelectedMonth(
+                        Number(e.target.value)
+                      )
+                    }
+                    style={selectStyle}
+                  >
+                    {Array.from(
+                      { length: 12 },
+                      (_, index) => index + 1
+                    ).map((month) => (
+                      <option
+                        key={month}
+                        value={month}
+                      >
+                        {new Date(
+                          2026,
+                          month - 1,
+                          1
+                        ).toLocaleDateString("en-IN", {
+                          month: "long",
+                        })}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={selectedYear}
+                    onChange={(e) =>
+                      setSelectedYear(
+                        Number(e.target.value)
+                      )
+                    }
+                    style={selectStyle}
+                  >
+                    <option value={2026}>
+                      2026
+                    </option>
+
+                    <option value={2025}>
+                      2025
+                    </option>
+
+                    <option value={2027}>
+                      2027
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              {monthlyReport && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(160px, 1fr))",
+                    gap: "15px",
+                  }}
+                >
+                  <MiniCard
+                    title="Total Records"
+                    value={monthlyReport.totalRecords}
+                  />
+
+                  <MiniCard
+                    title="Present"
+                    value={monthlyReport.present}
+                  />
+
+                  <MiniCard
+                    title="Absent"
+                    value={monthlyReport.absent}
+                  />
+
+                  <MiniCard
+                    title="WFO"
+                    value={monthlyReport.workFromOffice}
+                  />
+
+                  <MiniCard
+                    title="WFH"
+                    value={monthlyReport.workFromHome}
+                  />
+
+                  <MiniCard
+                    title="Attendance"
+                    value={`${monthlyReport.attendancePercentage}%`}
+                  />
+                </div>
+              )}
+            </section>
+
+            {/* ATTENDANCE DETAILS */}
+
+            <section
               style={{
                 background: "#ffffff",
                 border: "1px solid #e5e7eb",
@@ -603,12 +730,7 @@ export default function ReportsPage() {
                 padding: "25px",
               }}
             >
-              <h2
-                style={{
-                  marginTop: 0,
-                  fontSize: "20px",
-                }}
-              >
+              <h2 style={{ marginTop: 0 }}>
                 Attendance Details
               </h2>
 
@@ -625,55 +747,26 @@ export default function ReportsPage() {
                     }}
                   >
                     <thead>
-                      <tr
-                        style={{
-                          borderBottom:
-                            "2px solid #e5e7eb",
-                          textAlign: "left",
-                        }}
-                      >
-                        <th style={tableCell}>
-                          Date
-                        </th>
-
-                        <th style={tableCell}>
-                          Employee
-                        </th>
-
-                        <th style={tableCell}>
-                          Status
-                        </th>
-
-                        <th style={tableCell}>
-                          Location
-                        </th>
-
-                        <th style={tableCell}>
-                          Shift
-                        </th>
-
-                        <th style={tableCell}>
-                          Remarks
-                        </th>
+                      <tr>
+                        <th style={tableCell}>Date</th>
+                        <th style={tableCell}>Employee</th>
+                        <th style={tableCell}>Status</th>
+                        <th style={tableCell}>Location</th>
+                        <th style={tableCell}>Shift</th>
+                        <th style={tableCell}>Remarks</th>
                       </tr>
                     </thead>
 
                     <tbody>
                       {records.map((record) => (
-                        <tr
-                          key={record.id}
-                          style={{
-                            borderBottom:
-                              "1px solid #eeeeee",
-                          }}
-                        >
+                        <tr key={record.id}>
                           <td style={tableCell}>
                             {record.date}
                           </td>
 
                           <td style={tableCell}>
-                            {record.employee
-                              ?.fullName ?? "Om Prakash"}
+                            {record.employee?.fullName ??
+                              "Unknown"}
                           </td>
 
                           <td style={tableCell}>
@@ -686,8 +779,7 @@ export default function ReportsPage() {
                           </td>
 
                           <td style={tableCell}>
-                            {record.location?.name ??
-                              "—"}
+                            {record.location?.name ?? "—"}
                           </td>
 
                           <td style={tableCell}>
@@ -703,7 +795,7 @@ export default function ReportsPage() {
                   </table>
                 </div>
               )}
-            </div>
+            </section>
           </>
         )}
       </section>
@@ -717,7 +809,7 @@ function StatCard({
   icon,
 }: {
   title: string;
-  value: number;
+  value: number | string;
   icon: string;
 }) {
   return (
@@ -741,6 +833,7 @@ function StatCard({
         }}
       >
         <span>{title}</span>
+
         <span style={{ fontSize: "20px" }}>
           {icon}
         </span>
@@ -751,6 +844,44 @@ function StatCard({
           fontSize: "32px",
           fontWeight: "bold",
           marginTop: "15px",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MiniCard({
+  title,
+  value,
+}: {
+  title: string;
+  value: number | string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#f8fafc",
+        border: "1px solid #e5e7eb",
+        borderRadius: "10px",
+        padding: "18px",
+      }}
+    >
+      <div
+        style={{
+          color: "#64748b",
+          fontSize: "13px",
+          marginBottom: "8px",
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: "24px",
+          fontWeight: "bold",
         }}
       >
         {value}
@@ -775,14 +906,17 @@ function StatusBadge({
       background: "#dcfce7",
       color: "#166534",
     },
+
     Absent: {
       background: "#fee2e2",
       color: "#991b1b",
     },
+
     "Sick Leave": {
       background: "#fef3c7",
       color: "#92400e",
     },
+
     Vacation: {
       background: "#dbeafe",
       color: "#1d4ed8",
@@ -827,4 +961,13 @@ function navStyle(active: boolean) {
 const tableCell = {
   padding: "13px 10px",
   fontSize: "14px",
+  borderBottom: "1px solid #eeeeee",
+};
+
+const selectStyle = {
+  padding: "9px 12px",
+  border: "1px solid #d1d5db",
+  borderRadius: "8px",
+  background: "#ffffff",
+  cursor: "pointer",
 };

@@ -50,15 +50,76 @@ namespace EAMS.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("EmployeeId");
-
                     b.HasIndex("LocationId");
 
                     b.HasIndex("ShiftId");
 
                     b.HasIndex("StatusId");
 
+                    b.HasIndex("EmployeeId", "Date")
+                        .IsUnique();
+
                     b.ToTable("Attendances");
+                });
+
+            modelBuilder.Entity("EAMS.Api.Models.AttendanceCorrection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("ActionedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ActionedByManagerId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AttendanceId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("RequestedLocationId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RequestedShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RequestedStatusId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActionedByManagerId");
+
+                    b.HasIndex("AttendanceId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("RequestedLocationId");
+
+                    b.HasIndex("RequestedShiftId");
+
+                    b.HasIndex("RequestedStatusId");
+
+                    b.ToTable("AttendanceCorrections");
                 });
 
             modelBuilder.Entity("EAMS.Api.Models.AttendanceStatus", b =>
@@ -126,6 +187,9 @@ namespace EAMS.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
@@ -137,11 +201,29 @@ namespace EAMS.Api.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastLoginDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<int?>("ManagerId")
                         .HasColumnType("int");
 
+                    b.Property<string>("MobileNumber")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("RoleId")
                         .HasColumnType("int");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
 
@@ -150,6 +232,9 @@ namespace EAMS.Api.Migrations
                     b.HasIndex("ManagerId");
 
                     b.HasIndex("RoleId");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
 
                     b.ToTable("Employees");
                 });
@@ -207,6 +292,38 @@ namespace EAMS.Api.Migrations
                     b.HasIndex("EmployeeId");
 
                     b.ToTable("LeaveRequests");
+                });
+
+            modelBuilder.Entity("EAMS.Api.Models.Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("EAMS.Api.Models.Role", b =>
@@ -297,6 +414,50 @@ namespace EAMS.Api.Migrations
                     b.Navigation("Status");
                 });
 
+            modelBuilder.Entity("EAMS.Api.Models.AttendanceCorrection", b =>
+                {
+                    b.HasOne("EAMS.Api.Models.Employee", "ActionedByManager")
+                        .WithMany()
+                        .HasForeignKey("ActionedByManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("EAMS.Api.Models.Attendance", "Attendance")
+                        .WithMany()
+                        .HasForeignKey("AttendanceId");
+
+                    b.HasOne("EAMS.Api.Models.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EAMS.Api.Models.WorkLocation", "RequestedLocation")
+                        .WithMany()
+                        .HasForeignKey("RequestedLocationId");
+
+                    b.HasOne("EAMS.Api.Models.Shift", "RequestedShift")
+                        .WithMany()
+                        .HasForeignKey("RequestedShiftId");
+
+                    b.HasOne("EAMS.Api.Models.AttendanceStatus", "RequestedStatus")
+                        .WithMany()
+                        .HasForeignKey("RequestedStatusId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ActionedByManager");
+
+                    b.Navigation("Attendance");
+
+                    b.Navigation("Employee");
+
+                    b.Navigation("RequestedLocation");
+
+                    b.Navigation("RequestedShift");
+
+                    b.Navigation("RequestedStatus");
+                });
+
             modelBuilder.Entity("EAMS.Api.Models.Employee", b =>
                 {
                     b.HasOne("EAMS.Api.Models.Department", "Department")
@@ -324,6 +485,17 @@ namespace EAMS.Api.Migrations
                 });
 
             modelBuilder.Entity("EAMS.Api.Models.LeaveRequest", b =>
+                {
+                    b.HasOne("EAMS.Api.Models.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("EAMS.Api.Models.Notification", b =>
                 {
                     b.HasOne("EAMS.Api.Models.Employee", "Employee")
                         .WithMany()

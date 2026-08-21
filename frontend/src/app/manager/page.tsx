@@ -1,49 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import EamsShell from "@/components/EamsShell";
 
-type Employee = {
+const API = "http://localhost:5000/api";
+
+type TeamMember = {
   id: number;
   fullName: string;
   email: string;
-  departmentId: number;
-  roleId: number;
-  managerId: number | null;
-  department?: {
-    id: number;
-    name: string;
-  } | null;
-  role?: {
-    id: number;
-    name: string;
-  } | null;
-};
-
-type Attendance = {
-  id: number;
-  date: string;
-  remarks?: string | null;
-  employeeId: number;
-  statusId: number;
-  status?: {
-    id: number;
-    name: string;
-  } | null;
-  locationId?: number | null;
-  location?: {
-    id: number;
-    name: string;
-  } | null;
-  shiftId?: number | null;
-  shift?: {
-    id: number;
-    name: string;
-  } | null;
-  employee?: {
-    id: number;
-    fullName: string;
-  } | null;
+  role: string;
+  department?: string;
 };
 
 type LeaveRequest = {
@@ -52,1037 +21,473 @@ type LeaveRequest = {
   leaveType: string;
   startDate: string;
   endDate: string;
-  reason?: string | null;
+  reason: string;
   status: string;
-  employee?: {
-    id: number;
-    fullName: string;
-    email: string;
-  } | null;
+  employee?: { fullName: string };
 };
 
-const API = "http://localhost:5000/api";
+type AttendanceCorrection = {
+  id: number;
+  employeeId: number;
+  employeeName?: string;
+  date: string;
+  reason: string;
+  status: string;
+};
 
-// Current manager
-const MANAGER_ID = 2;
+type AttendanceRecord = {
+  id: number;
+  employeeId: number;
+  date: string;
+  status?: { name: string };
+  location?: { name: string };
+};
 
-export default function ManagerPage() {
-  const [manager, setManager] = useState<Employee | null>(null);
-  const [team, setTeam] = useState<Employee[]>([]);
-  const [attendance, setAttendance] = useState<Attendance[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-
+export default function ManagerDashboard() {
+  const router = useRouter();
+  const [manager, setManager] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
-  const loadManagerData = async () => {
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamLeaves, setTeamLeaves] = useState<LeaveRequest[]>([]);
+  const [teamCorrections, setTeamCorrections] = useState<AttendanceCorrection[]>([]);
+  const [attendances, setAttendances] = useState<AttendanceRecord[]>([]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("eams_user");
+    if (!stored) {
+      router.replace("/login");
+      return;
+    }
     try {
-      setError("");
+      const user = JSON.parse(stored);
+      setManager(user);
+      loadManagerDashboard(user.id);
+    } catch {
+      router.replace("/login");
+    }
+  }, [router]);
 
-      const [
-        managerResponse,
-        teamResponse,
-        attendanceResponse,
-        leaveResponse,
-      ] = await Promise.all([
-        fetch(`${API}/employees/manager/${MANAGER_ID}`),
-        fetch(`${API}/employees/manager/${MANAGER_ID}/team`),
-        fetch(`${API}/Attendance`),
+  async function loadManagerDashboard(managerId: number) {
+    try {
+      setLoading(true);
+      const [teamRes, leavesRes, corrRes, attRes] = await Promise.all([
+        fetch(`${API}/employees/manager/${managerId}/team`),
         fetch(`${API}/LeaveRequests`),
+        fetch(`${API}/AttendanceCorrections/manager/${managerId}`),
+        fetch(`${API}/Attendance`),
       ]);
 
-      if (!managerResponse.ok) {
-        throw new Error("Unable to load manager information.");
+      let members: TeamMember[] = [];
+      if (teamRes.ok) {
+        members = await teamRes.json();
+        setTeamMembers(Array.isArray(members) ? members : []);
       }
 
-      if (!teamResponse.ok) {
-        throw new Error("Unable to load team.");
+      const teamIds = new Set(members.map((m) => m.id));
+
+      if (leavesRes.ok) {
+        const allLeaves: LeaveRequest[] = await leavesRes.json();
+        // Filter leaves for this manager's team or all if manager manages everyone
+        const relevantLeaves = Array.isArray(allLeaves)
+          ? allLeaves.filter((l) => teamIds.has(l.employeeId) || teamIds.size === 0)
+          : [];
+        setTeamLeaves(relevantLeaves);
       }
 
-      if (!attendanceResponse.ok) {
-        throw new Error("Unable to load attendance.");
+      if (corrRes.ok) {
+        const corrs = await corrRes.json();
+        setTeamCorrections(Array.isArray(corrs) ? corrs : []);
       }
 
-      if (!leaveResponse.ok) {
-        throw new Error("Unable to load leave requests.");
+      if (attRes.ok) {
+        const atts: AttendanceRecord[] = await attRes.json();
+        setAttendances(Array.isArray(atts) ? atts : []);
       }
-
-      const managerData = await managerResponse.json();
-      const teamData = await teamResponse.json();
-      const attendanceData = await attendanceResponse.json();
-      const leaveData = await leaveResponse.json();
-
-      setManager(managerData.manager);
-      setTeam(teamData);
-      setAttendance(attendanceData);
-      setLeaveRequests(leaveData);
     } catch (err) {
-      console.error(err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load Manager Portal."
-      );
+      console.error("Error loading manager dashboard", err);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  useEffect(() => {
-    loadManagerData();
-  }, []);
+  if (!manager) {
+    return (
+      <EamsShell role="Manager">
+        <div className="loading">Loading Manager Portal...</div>
+      </EamsShell>
+    );
+  }
 
-  const teamIds = useMemo(
-    () => new Set(team.map((employee) => employee.id)),
-    [team]
+  const teamCount = teamMembers.length;
+  const pendingLeaves = teamLeaves.filter((l) => l.status === "Pending").length;
+  const pendingCorrections = teamCorrections.filter((c) => c.status === "Pending").length;
+
+  // Team attendance stats
+  const teamMemberIds = new Set(teamMembers.map((m) => m.id));
+  const teamAttendances = attendances.filter(
+    (a) => teamMemberIds.has(a.employeeId) || (teamMemberIds.size === 0 && attendances.length > 0)
   );
 
-  const teamAttendance = useMemo(
-    () =>
-      attendance.filter((record) =>
-        teamIds.has(record.employeeId)
-      ),
-    [attendance, teamIds]
-  );
-
-  const teamLeaveRequests = useMemo(
-    () =>
-      leaveRequests.filter((request) =>
-        teamIds.has(request.employeeId)
-      ),
-    [leaveRequests, teamIds]
-  );
-
-  const presentCount = teamAttendance.filter(
-    (record) => record.status?.name === "Present"
+  const presentCount = teamAttendances.filter(
+    (a) => a.status?.name?.toLowerCase() === "present"
   ).length;
 
-  const absentCount = teamAttendance.filter(
-    (record) => record.status?.name === "Absent"
+  const wfhCount = teamAttendances.filter(
+    (a) => a.location?.name?.toLowerCase() === "home"
   ).length;
 
-  const pendingLeaves = teamLeaveRequests.filter(
-    (request) => request.status === "Pending"
+  const wfoCount = teamAttendances.filter(
+    (a) => a.location?.name?.toLowerCase() === "office"
   ).length;
-
-  const approveLeave = async (id: number) => {
-    try {
-      const response = await fetch(
-        `${API}/LeaveRequests/${id}/approve`,
-        {
-          method: "PUT",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Approve endpoint is not available yet.");
-      }
-
-      await loadManagerData();
-    } catch (err) {
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Unable to approve leave."
-      );
-    }
-  };
-
-  const rejectLeave = async (id: number) => {
-    try {
-      const response = await fetch(
-        `${API}/LeaveRequests/${id}/reject`,
-        {
-          method: "PUT",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Reject endpoint is not available yet.");
-      }
-
-      await loadManagerData();
-    } catch (err) {
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Unable to reject leave."
-      );
-    }
-  };
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f7f8fc",
-        fontFamily: "Arial, sans-serif",
-        display: "flex",
-      }}
-    >
-      {/* SIDEBAR */}
-
-      <aside
-        style={{
-          width: "240px",
-          minHeight: "100vh",
-          background: "#ffffff",
-          borderRight: "1px solid #e5e7eb",
-          padding: "25px 18px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "22px",
-            fontWeight: "bold",
-            marginBottom: "35px",
-          }}
-        >
-          📅 EAMS
-        </div>
-
-        <nav
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-          }}
-        >
-          <Link href="/" style={navStyle(false)}>
-            🏠 Dashboard
-          </Link>
-
-          <Link
-            href="/attendance/calendar"
-            style={navStyle(false)}
-          >
-            📅 Attendance Calendar
-          </Link>
-
-          <Link
-            href="/employees"
-            style={navStyle(false)}
-          >
-            👥 Team Overview
-          </Link>
-
-          <Link
-            href="/leave-requests"
-            style={navStyle(false)}
-          >
-            📋 Leave Requests
-          </Link>
-
-          <Link
-            href="/reports"
-            style={navStyle(false)}
-          >
-            📊 Reports & Analytics
-          </Link>
-
-          <Link
-            href="/manager"
-            style={navStyle(true)}
-          >
-            👔 Manager Portal
-          </Link>
-
-          <Link
-            href="/settings"
-            style={navStyle(false)}
-          >
-            ⚙️ Settings
-          </Link>
-        </nav>
-
-        {/* MANAGER INFO */}
-
-        <div
-          style={{
-            position: "absolute",
-            bottom: "25px",
-            left: "18px",
-            right: "18px",
-            borderTop: "1px solid #e5e7eb",
-            paddingTop: "18px",
-          }}
-        >
-          <strong>
-            {manager?.fullName ?? "Rahul Sharma"}
-          </strong>
-
-          <div
-            style={{
-              color: "#6b7280",
-              fontSize: "13px",
-              marginTop: "4px",
-            }}
-          >
-            Manager
+    <EamsShell role="Manager">
+      <div className="professional-attendance" style={{ padding: "24px", maxWidth: "1200px", margin: "0 auto" }}>
+        {/* Page Header */}
+        <div className="page-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+          <div>
+            <h1 style={{ fontSize: "24px", fontWeight: 700, margin: 0, color: "#0f172a" }}>
+              Manager Portal
+            </h1>
+            <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: "14px" }}>
+              Welcome back, {manager.fullName}. Live team attendance and approvals.
+            </p>
           </div>
-        </div>
-      </aside>
-
-      {/* MAIN */}
-
-      <section
-        style={{
-          flex: 1,
-          padding: "35px",
-          overflowX: "auto",
-        }}
-      >
-        {/* HEADER */}
-
-        <div style={{ marginBottom: "30px" }}>
-          <h1
-            style={{
-              fontSize: "30px",
-              margin: 0,
-              marginBottom: "8px",
-            }}
-          >
-            Manager Dashboard
-          </h1>
-
-          <p
-            style={{
-              margin: 0,
-              color: "#6b7280",
-            }}
-          >
-            Manage your team, attendance and leave requests.
-          </p>
-        </div>
-
-        {/* ERROR */}
-
-        {error && (
-          <div
-            style={{
-              background: "#fef2f2",
-              color: "#b91c1c",
-              border: "1px solid #fecaca",
-              padding: "14px",
-              borderRadius: "10px",
-              marginBottom: "20px",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {/* LOADING */}
-
-        {loading ? (
-          <div
-            style={{
-              background: "#ffffff",
-              padding: "30px",
-              borderRadius: "14px",
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            Loading Manager Portal...
-          </div>
-        ) : (
-          <>
-            {/* MANAGER HEADER */}
-
-            <div
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Link
+              href="/manager/attendance"
               style={{
-                background: "#ffffff",
-                border: "1px solid #e5e7eb",
-                borderRadius: "14px",
-                padding: "25px",
-                marginBottom: "25px",
+                padding: "9px 16px",
+                background: "#2563eb",
+                color: "#ffffff",
+                borderRadius: "8px",
+                textDecoration: "none",
+                fontWeight: 600,
+                fontSize: "13px"
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "18px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "65px",
-                    height: "65px",
-                    borderRadius: "50%",
-                    background: "#dbeafe",
-                    color: "#1d4ed8",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "25px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {manager?.fullName
-                    ?.split(" ")
-                    .map((name) => name[0])
-                    .join("")
-                    .substring(0, 2) ?? "RS"}
-                </div>
+              Team Attendance
+            </Link>
+            <Link
+              href="/manager/leave"
+              style={{
+                padding: "9px 16px",
+                background: "#f1f5f9",
+                color: "#334155",
+                border: "1px solid #cbd5e1",
+                borderRadius: "8px",
+                textDecoration: "none",
+                fontWeight: 600,
+                fontSize: "13px"
+              }}
+            >
+              Leave Approvals
+            </Link>
+          </div>
+        </div>
 
-                <div>
-                  <h2
-                    style={{
-                      margin: 0,
-                      marginBottom: "5px",
-                    }}
-                  >
-                    Welcome,{" "}
-                    {manager?.fullName ?? "Rahul Sharma"}
-                  </h2>
+        {/* Live Stats Cards Grid */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "16px",
+          marginBottom: "24px"
+        }}>
+          <div style={{
+            background: "#ffffff",
+            padding: "20px",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            borderTop: "4px solid #2563eb",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}>
+            <span style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>
+              Team Members
+            </span>
+            <div style={{ fontSize: "28px", fontWeight: 800, color: "#1e293b", margin: "8px 0 2px" }}>
+              {loading ? "..." : teamCount}
+            </div>
+            <Link href="/manager/team" style={{ fontSize: "12px", color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>
+              View Team Directory →
+            </Link>
+          </div>
 
+          <div style={{
+            background: "#ffffff",
+            padding: "20px",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            borderTop: "4px solid #059669",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}>
+            <span style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>
+              Present Records
+            </span>
+            <div style={{ fontSize: "28px", fontWeight: 800, color: "#059669", margin: "8px 0 2px" }}>
+              {loading ? "..." : presentCount}
+            </div>
+            <span style={{ fontSize: "12px", color: "#64748b" }}>WFO: {wfoCount} | WFH: {wfhCount}</span>
+          </div>
+
+          <div style={{
+            background: "#ffffff",
+            padding: "20px",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            borderTop: "4px solid #d97706",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}>
+            <span style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>
+              Pending Leaves
+            </span>
+            <div style={{ fontSize: "28px", fontWeight: 800, color: "#d97706", margin: "8px 0 2px" }}>
+              {loading ? "..." : pendingLeaves}
+            </div>
+            <Link href="/manager/leave" style={{ fontSize: "12px", color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>
+              Action Requests →
+            </Link>
+          </div>
+
+          <div style={{
+            background: "#ffffff",
+            padding: "20px",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            borderTop: "4px solid #7c3aed",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}>
+            <span style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>
+              Pending Corrections
+            </span>
+            <div style={{ fontSize: "28px", fontWeight: 800, color: "#7c3aed", margin: "8px 0 2px" }}>
+              {loading ? "..." : pendingCorrections}
+            </div>
+            <Link href="/manager/attendance" style={{ fontSize: "12px", color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>
+              Review Requests →
+            </Link>
+          </div>
+        </div>
+
+        {/* 2 Column Layout: Team Members List & Pending Approval Queue */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "24px" }}>
+          {/* Team Members List */}
+          <div style={{
+            background: "#ffffff",
+            padding: "24px",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h2 style={{ fontSize: "17px", fontWeight: 700, margin: 0, color: "#1e293b" }}>
+                Direct Team Members
+              </h2>
+              <Link href="/manager/team" style={{ fontSize: "12px", color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>
+                All Members
+              </Link>
+            </div>
+
+            {teamMembers.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {teamMembers.map((member) => (
                   <div
+                    key={member.id}
                     style={{
-                      color: "#6b7280",
-                      fontSize: "14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "12px 14px",
+                      background: "#f8fafc",
+                      borderRadius: "8px",
+                      border: "1px solid #f1f5f9"
                     }}
                   >
-                    {manager?.department?.name ??
-                      "Engineering"}{" "}
-                    • Manager
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "50%",
+                        background: "#2563eb",
+                        color: "#ffffff",
+                        display: "grid",
+                        placeItems: "center",
+                        fontWeight: 700,
+                        fontSize: "14px"
+                      }}>
+                        {member.fullName?.charAt(0) || "U"}
+                      </div>
+                      <div>
+                        <strong style={{ fontSize: "14px", color: "#334155" }}>{member.fullName}</strong>
+                        <div style={{ fontSize: "12px", color: "#64748b" }}>{member.email}</div>
+                      </div>
+                    </div>
+                    <span style={{
+                      padding: "4px 10px",
+                      background: "#dbeafe",
+                      color: "#1e40af",
+                      borderRadius: "16px",
+                      fontSize: "11px",
+                      fontWeight: 600
+                    }}>
+                      {member.role || "Employee"}
+                    </span>
                   </div>
-                </div>
+                ))}
               </div>
+            ) : (
+              <div style={{ padding: "20px", textAlign: "center", color: "#64748b", fontSize: "14px" }}>
+                No direct reports assigned currently.
+              </div>
+            )}
+          </div>
+
+          {/* Pending Approval Queue */}
+          <div style={{
+            background: "#ffffff",
+            padding: "24px",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h2 style={{ fontSize: "17px", fontWeight: 700, margin: 0, color: "#1e293b" }}>
+                Pending Leave Queue
+              </h2>
+              <Link href="/manager/leave" style={{ fontSize: "12px", color: "#2563eb", textDecoration: "none", fontWeight: 600 }}>
+                Manage All
+              </Link>
             </div>
 
-            {/* STATISTICS */}
+            {teamLeaves.filter((l) => l.status === "Pending").length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {teamLeaves
+                  .filter((l) => l.status === "Pending")
+                  .map((leave) => (
+                    <div
+                      key={leave.id}
+                      style={{
+                        padding: "14px",
+                        borderLeft: "4px solid #d97706",
+                        background: "#fffbeb",
+                        borderRadius: "0 8px 8px 0",
+                        fontSize: "13px",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.04)"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#92400e", fontSize: "14px" }}>
+                            {leave.employee?.fullName || `Employee #${leave.employeeId}`} - {leave.leaveType}
+                          </div>
+                          <div style={{ color: "#78350f", fontSize: "12px", marginTop: "2px", fontWeight: 500 }}>
+                            📅 {leave.startDate?.slice(0, 10)} to {leave.endDate?.slice(0, 10)}
+                          </div>
+                          <div style={{ color: "#451a03", fontSize: "12px", marginTop: "4px", fontStyle: "italic" }}>
+                            Reason: "{leave.reason || "No reason specified"}"
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: "flex", gap: "8px", marginTop: "12px", justifyContent: "flex-end" }}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`${API}/LeaveRequests/${leave.id}/approve`, {
+                                method: "PUT",
+                                headers: { "Content-Type": "application/json" }
+                              });
+                              if (res.ok) {
+                                if (manager?.id) loadManagerDashboard(manager.id);
+                              } else {
+                                alert("Failed to approve leave request.");
+                              }
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          }}
+                          style={{
+                            background: "#16a34a",
+                            color: "#ffffff",
+                            border: "none",
+                            padding: "6px 14px",
+                            borderRadius: "6px",
+                            fontWeight: 600,
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            boxShadow: "0 1px 2px rgba(22, 163, 74, 0.3)"
+                          }}
+                        >
+                          ✓ Accept / Approve
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`${API}/LeaveRequests/${leave.id}/reject`, {
+                                method: "PUT",
+                                headers: { "Content-Type": "application/json" }
+                              });
+                              if (res.ok) {
+                                if (manager?.id) loadManagerDashboard(manager.id);
+                              } else {
+                                alert("Failed to reject leave request.");
+                              }
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          }}
+                          style={{
+                            background: "#dc2626",
+                            color: "#ffffff",
+                            border: "none",
+                            padding: "6px 14px",
+                            borderRadius: "6px",
+                            fontWeight: 600,
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            boxShadow: "0 1px 2px rgba(220, 38, 38, 0.3)"
+                          }}
+                        >
+                          ✕ Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div style={{ padding: "20px", textAlign: "center", color: "#059669", fontSize: "13px", background: "#f0fdf4", borderRadius: "8px" }}>
+                ✓ No pending leave approvals for your team.
+              </div>
+            )}
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(4, minmax(180px, 1fr))",
-                gap: "18px",
-                marginBottom: "25px",
-              }}
-            >
-              <StatCard
-                title="Team Members"
-                value={team.length}
-                icon="👥"
-              />
-
-              <StatCard
-                title="Present"
-                value={presentCount}
-                icon="✅"
-              />
-
-              <StatCard
-                title="Absent"
-                value={absentCount}
-                icon="❌"
-              />
-
-              <StatCard
-                title="Pending Leave"
-                value={pendingLeaves}
-                icon="📋"
-              />
-            </div>
-
-            {/* TEAM */}
-
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e5e7eb",
-                borderRadius: "14px",
-                padding: "25px",
-                marginBottom: "25px",
-              }}
-            >
-              <h2
+            <div style={{ marginTop: "20px" }}>
+              <Link
+                href="/manager/team-performance"
                 style={{
-                  marginTop: 0,
-                  fontSize: "20px",
+                  display: "block",
+                  textAlign: "center",
+                  padding: "10px",
+                  background: "#f8fafc",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  color: "#334155",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  textDecoration: "none"
                 }}
               >
-                My Team
-              </h2>
-
-              {team.length === 0 ? (
-                <p style={{ color: "#6b7280" }}>
-                  No employees are assigned to you.
-                </p>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                    }}
-                  >
-                    <thead>
-                      <tr
-                        style={{
-                          borderBottom:
-                            "2px solid #e5e7eb",
-                          textAlign: "left",
-                        }}
-                      >
-                        <th style={tableCell}>
-                          Employee
-                        </th>
-
-                        <th style={tableCell}>
-                          Email
-                        </th>
-
-                        <th style={tableCell}>
-                          Department
-                        </th>
-
-                        <th style={tableCell}>
-                          Role
-                        </th>
-
-                        <th style={tableCell}>
-                          Attendance
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {team.map((employee) => {
-                        const employeeAttendance =
-                          teamAttendance.filter(
-                            (record) =>
-                              record.employeeId ===
-                              employee.id
-                          );
-
-                        const latest =
-                          employeeAttendance.sort(
-                            (a, b) =>
-                              b.date.localeCompare(
-                                a.date
-                              )
-                          )[0];
-
-                        return (
-                          <tr
-                            key={employee.id}
-                            style={{
-                              borderBottom:
-                                "1px solid #eeeeee",
-                            }}
-                          >
-                            <td style={tableCell}>
-                              <strong>
-                                {employee.fullName}
-                              </strong>
-                            </td>
-
-                            <td style={tableCell}>
-                              {employee.email}
-                            </td>
-
-                            <td style={tableCell}>
-                              {employee.department
-                                ?.name ?? "—"}
-                            </td>
-
-                            <td style={tableCell}>
-                              {employee.role?.name ??
-                                "Employee"}
-                            </td>
-
-                            <td style={tableCell}>
-                              {latest ? (
-                                <StatusBadge
-                                  status={
-                                    latest.status
-                                      ?.name ??
-                                    "Unknown"
-                                  }
-                                />
-                              ) : (
-                                <span
-                                  style={{
-                                    color: "#6b7280",
-                                  }}
-                                >
-                                  No record
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                📊 View Team Performance & Analytics
+              </Link>
             </div>
-
-            {/* LEAVE REQUESTS */}
-
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e5e7eb",
-                borderRadius: "14px",
-                padding: "25px",
-                marginBottom: "25px",
-              }}
-            >
-              <h2
-                style={{
-                  marginTop: 0,
-                  fontSize: "20px",
-                }}
-              >
-                Team Leave Requests
-              </h2>
-
-              {teamLeaveRequests.length === 0 ? (
-                <p style={{ color: "#6b7280" }}>
-                  No leave requests from your team.
-                </p>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                    }}
-                  >
-                    <thead>
-                      <tr
-                        style={{
-                          borderBottom:
-                            "2px solid #e5e7eb",
-                          textAlign: "left",
-                        }}
-                      >
-                        <th style={tableCell}>
-                          Employee
-                        </th>
-
-                        <th style={tableCell}>
-                          Type
-                        </th>
-
-                        <th style={tableCell}>
-                          Start
-                        </th>
-
-                        <th style={tableCell}>
-                          End
-                        </th>
-
-                        <th style={tableCell}>
-                          Reason
-                        </th>
-
-                        <th style={tableCell}>
-                          Status
-                        </th>
-
-                        <th style={tableCell}>
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {teamLeaveRequests.map(
-                        (request) => (
-                          <tr
-                            key={request.id}
-                            style={{
-                              borderBottom:
-                                "1px solid #eeeeee",
-                            }}
-                          >
-                            <td style={tableCell}>
-                              {request.employee
-                                ?.fullName ??
-                                team.find(
-                                  (e) =>
-                                    e.id ===
-                                    request.employeeId
-                                )?.fullName ??
-                                "Employee"}
-                            </td>
-
-                            <td style={tableCell}>
-                              {request.leaveType}
-                            </td>
-
-                            <td style={tableCell}>
-                              {request.startDate}
-                            </td>
-
-                            <td style={tableCell}>
-                              {request.endDate}
-                            </td>
-
-                            <td style={tableCell}>
-                              {request.reason || "—"}
-                            </td>
-
-                            <td style={tableCell}>
-                              <StatusBadge
-                                status={request.status}
-                              />
-                            </td>
-
-                            <td style={tableCell}>
-                              {request.status ===
-                              "Pending" ? (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: "7px",
-                                  }}
-                                >
-                                  <button
-                                    onClick={() =>
-                                      approveLeave(
-                                        request.id
-                                      )
-                                    }
-                                    style={{
-                                      background:
-                                        "#16a34a",
-                                      color:
-                                        "#ffffff",
-                                      border: "none",
-                                      borderRadius:
-                                        "6px",
-                                      padding:
-                                        "7px 10px",
-                                      cursor:
-                                        "pointer",
-                                      fontSize:
-                                        "12px",
-                                      fontWeight:
-                                        "bold",
-                                    }}
-                                  >
-                                    Approve
-                                  </button>
-
-                                  <button
-                                    onClick={() =>
-                                      rejectLeave(
-                                        request.id
-                                      )
-                                    }
-                                    style={{
-                                      background:
-                                        "#dc2626",
-                                      color:
-                                        "#ffffff",
-                                      border: "none",
-                                      borderRadius:
-                                        "6px",
-                                      padding:
-                                        "7px 10px",
-                                      cursor:
-                                        "pointer",
-                                      fontSize:
-                                        "12px",
-                                      fontWeight:
-                                        "bold",
-                                    }}
-                                  >
-                                    Reject
-                                  </button>
-                                </div>
-                              ) : (
-                                <span
-                                  style={{
-                                    color: "#6b7280",
-                                    fontSize: "13px",
-                                  }}
-                                >
-                                  Completed
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* ATTENDANCE */}
-
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e5e7eb",
-                borderRadius: "14px",
-                padding: "25px",
-              }}
-            >
-              <h2
-                style={{
-                  marginTop: 0,
-                  fontSize: "20px",
-                }}
-              >
-                Team Attendance
-              </h2>
-
-              {teamAttendance.length === 0 ? (
-                <p style={{ color: "#6b7280" }}>
-                  No attendance records found.
-                </p>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                    }}
-                  >
-                    <thead>
-                      <tr
-                        style={{
-                          borderBottom:
-                            "2px solid #e5e7eb",
-                          textAlign: "left",
-                        }}
-                      >
-                        <th style={tableCell}>
-                          Date
-                        </th>
-
-                        <th style={tableCell}>
-                          Employee
-                        </th>
-
-                        <th style={tableCell}>
-                          Status
-                        </th>
-
-                        <th style={tableCell}>
-                          Location
-                        </th>
-
-                        <th style={tableCell}>
-                          Shift
-                        </th>
-
-                        <th style={tableCell}>
-                          Remarks
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {teamAttendance
-                        .sort((a, b) =>
-                          b.date.localeCompare(
-                            a.date
-                          )
-                        )
-                        .map((record) => (
-                          <tr
-                            key={record.id}
-                            style={{
-                              borderBottom:
-                                "1px solid #eeeeee",
-                            }}
-                          >
-                            <td style={tableCell}>
-                              {record.date}
-                            </td>
-
-                            <td style={tableCell}>
-                              {record.employee
-                                ?.fullName ??
-                                team.find(
-                                  (e) =>
-                                    e.id ===
-                                    record.employeeId
-                                )?.fullName ??
-                                "Employee"}
-                            </td>
-
-                            <td style={tableCell}>
-                              <StatusBadge
-                                status={
-                                  record.status
-                                    ?.name ??
-                                  "Unknown"
-                                }
-                              />
-                            </td>
-
-                            <td style={tableCell}>
-                              {record.location?.name ??
-                                "—"}
-                            </td>
-
-                            <td style={tableCell}>
-                              {record.shift?.name ??
-                                "—"}
-                            </td>
-
-                            <td style={tableCell}>
-                              {record.remarks || "—"}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </section>
-    </main>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  icon,
-}: {
-  title: string;
-  value: number;
-  icon: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
-        borderRadius: "14px",
-        padding: "22px",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          color: "#64748b",
-          fontSize: "14px",
-        }}
-      >
-        <span>{title}</span>
-
-        <span style={{ fontSize: "20px" }}>
-          {icon}
-        </span>
+          </div>
+        </div>
       </div>
-
-      <div
-        style={{
-          fontSize: "32px",
-          fontWeight: "bold",
-          marginTop: "15px",
-        }}
-      >
-        {value}
-      </div>
-    </div>
+    </EamsShell>
   );
 }
-
-function StatusBadge({
-  status,
-}: {
-  status: string;
-}) {
-  const styles: Record<
-    string,
-    {
-      background: string;
-      color: string;
-    }
-  > = {
-    Present: {
-      background: "#dcfce7",
-      color: "#166534",
-    },
-
-    Absent: {
-      background: "#fee2e2",
-      color: "#991b1b",
-    },
-
-    Pending: {
-      background: "#fef3c7",
-      color: "#92400e",
-    },
-
-    Approved: {
-      background: "#dcfce7",
-      color: "#166534",
-    },
-
-    Rejected: {
-      background: "#fee2e2",
-      color: "#991b1b",
-    },
-
-    "Sick Leave": {
-      background: "#fef3c7",
-      color: "#92400e",
-    },
-
-    Vacation: {
-      background: "#dbeafe",
-      color: "#1d4ed8",
-    },
-  };
-
-  const current = styles[status] ?? {
-    background: "#f1f5f9",
-    color: "#475569",
-  };
-
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "5px 10px",
-        borderRadius: "20px",
-        background: current.background,
-        color: current.color,
-        fontSize: "12px",
-        fontWeight: "bold",
-      }}
-    >
-      {status}
-    </span>
-  );
-}
-
-function navStyle(active: boolean) {
-  return {
-    display: "block",
-    padding: "11px 13px",
-    borderRadius: "8px",
-    textDecoration: "none",
-    color: active ? "#2563eb" : "#374151",
-    background: active ? "#eff6ff" : "transparent",
-    fontSize: "14px",
-    fontWeight: active ? "bold" : "normal",
-  };
-}
-
-const tableCell = {
-  padding: "13px 10px",
-  fontSize: "14px",
-};
