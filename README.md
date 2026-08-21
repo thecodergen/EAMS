@@ -1,4 +1,4 @@
-# 🏢 EAMS - Enterprise Attendance Management System
+# 🏢 EAMS - Employee Attendance Management System
 
 [![Next.js](https://img.shields.io/badge/Frontend-Next.js%2015-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![ASP.NET Core](https://img.shields.io/badge/Backend-ASP.NET%20Core%209.0-512BD4?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
