@@ -212,7 +212,7 @@ EAMS/
 
 | Role | Email | Password | Access Portal |
 | :--- | :--- | :--- | :--- |
-| 🛡️ **Admin** | `admin@eams.com` | `Admin123!` | `/admin` |
+| 🛡️ **Admin** | `admin@eams.com` | `Eams@123` | `/admin` |
 | 👔 **Manager** | `rahul@eams.com` | `Eams@123` | `/manager` |
 | 👤 **Employee** | `om@example.com` | `Eams@123` | `/employee` |
 
