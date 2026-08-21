@@ -7,7 +7,7 @@
 [![C#](https://img.shields.io/badge/Language-C%23-239120?style=for-the-badge&logo=c-sharp)](https://docs.microsoft.com/en-us/dotnet/csharp/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
-**EAMS (Enterprise Attendance Management System)** is a modern, full-stack, enterprise-grade web application built with **Next.js (React 19, TypeScript)** and **ASP.NET Core 9 Web API (C#)**. It offers comprehensive role-based workflows for **Employees**, **Managers**, and **System Administrators**, supporting biometric-style attendance tracking, multi-tier leave approval pipelines, attendance corrections, OTP-based multi-factor authentication, customizable theme engines, notifications, and Excel reporting.
+**EAMS (Employee Attendance Management System)** is a modern, full-stack, enterprise-grade web application built with **Next.js (React 19, TypeScript)** and **ASP.NET Core 9 Web API (C#)**. It offers comprehensive role-based workflows for **Employees**, **Managers**, and **System Administrators**, supporting biometric-style attendance tracking, multi-tier leave approval pipelines, attendance corrections, OTP-based multi-factor authentication, customizable theme engines, notifications, and Excel reporting.
 
 ---
 
